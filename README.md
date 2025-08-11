@@ -19,7 +19,7 @@ This project demonstrates a **resilient, weighted fan-out** for log processing. 
 
 ## 2) Architecture
 
-![Diagram](arch diagram.png)
+![Diagram](arch-diagram.png)
 
 ## 3) Components
 
