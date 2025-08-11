@@ -1,0 +1,7 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: distributor
+    static_configs:
+      - targets: ['distributor:8000']   # Exposes /metrics on the same port as the API

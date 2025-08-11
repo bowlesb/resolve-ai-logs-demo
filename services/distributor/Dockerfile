@@ -1,6 +1,18 @@
 FROM python:3.11-slim
 WORKDIR /app
-RUN pip install --no-cache-dir fastapi uvicorn gunicorn grpcio grpcio-tools pymongo pydantic[dotenv] httpx
+
+RUN pip install --no-cache-dir \
+    fastapi==0.112.* \
+    uvicorn==0.30.* \
+    gunicorn==22.* \
+    grpcio==1.64.* \
+    grpcio-tools==1.64.* \
+    pymongo==4.* \
+    pydantic==2.* \
+    httpx==0.27.* \
+    prometheus-client==0.20.*
+
+    
 COPY app /app/app
 ENV PYTHONPATH=/app/app:/app
 COPY proto/logs.proto /app/proto/logs.proto

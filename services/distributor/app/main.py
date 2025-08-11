@@ -25,6 +25,7 @@ import grpc
 from grpc.aio import AioRpcError
 import pymongo
 from types import SimpleNamespace
+from prometheus_client import Counter, CONTENT_TYPE_LATEST, generate_latest
 
 from . import logs_pb2, logs_pb2_grpc
 from .simple_circuit_breaker import SimpleCircuitBreaker
@@ -40,6 +41,11 @@ from .constants import (
     DEFAULT_ANALYZER_TO_WEIGHTS,
     WEIGHTS_COL,
 )
+
+
+SUCCESS = Counter("distributor_analyzer_success_total", "Total successful analyzer calls")
+FAILURE = Counter("distributor_analyzer_failure_total", "Total failed analyzer calls")
+
 
 
 logging.basicConfig(
@@ -205,11 +211,14 @@ async def ingest(packet: LogPacket):
                     for m in packet.messages
                 ],
             )
+            
             _ = await stub.Analyze(req, timeout=ANALYZER_TIMEOUT_MS / 1000.0)
             ctx.circuit_breakers[target].record_success()
+            SUCCESS.inc()
             return {"accepted_by": target, "count": len(packet.messages)}
         except AioRpcError:
             # analyzer failed or unavailable
+            FAILURE.inc()
             ctx.circuit_breakers[target].record_failure()
             continue
 

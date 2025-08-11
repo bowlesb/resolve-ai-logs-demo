@@ -176,7 +176,33 @@ services:
     ports:
       - "8080:8080"
 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./services/distributor/infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - distributor
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    volumes:
+      - ./services/distributor/infra/grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+      - ./services/distributor/infra/grafana-dashboard.yaml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./services/distributor/infra/grafana-dashboard.json:/var/lib/grafana/dashboards/grafana-dashboard.json:ro
+
+      
 volumes:
   mongo_data:
   opensearch_data: {}
   graylog_journal: {}
+
