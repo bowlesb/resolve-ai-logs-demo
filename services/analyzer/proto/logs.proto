@@ -1,0 +1,23 @@
+syntax = "proto3";
+package logs;
+
+message LogMessage {
+  string timestamp = 1;
+  string level = 2;
+  string message = 3;
+  map<string, string> attrs = 4;
+}
+
+message LogPacket {
+  string source_id = 1;
+  repeated LogMessage messages = 2;
+}
+
+message Ack {
+  bool accepted = 1;
+  string note = 2;
+}
+
+service Analyzer {
+  rpc Analyze (LogPacket) returns (Ack);
+}

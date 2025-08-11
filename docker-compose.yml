@@ -1,0 +1,182 @@
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:6
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+
+  opensearch:
+    image: opensearchproject/opensearch:2.11.1
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - plugins.security.disabled=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    ports:
+      - "9200:9200"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+
+  graylog:
+    image: graylog/graylog:5.2
+    depends_on:
+      - mongo
+      - opensearch
+    restart: unless-stopped
+    environment:
+      - GRAYLOG_PASSWORD_SECRET=please-change-me-to-a-long-random-string
+      - GRAYLOG_ROOT_PASSWORD_SHA2=8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918
+      - GRAYLOG_HTTP_EXTERNAL_URI=http://localhost:9000/
+      - GRAYLOG_ELASTICSEARCH_HOSTS=http://opensearch:9200
+      - GRAYLOG_ROOT_TIMEZONE=UTC
+      - GRAYLOG_SERVER_JAVA_OPTS=-Xms256m -Xmx512m
+    entrypoint: /usr/bin/tini -- wait-for-it opensearch:9200 --  /docker-entrypoint.sh
+    healthcheck:
+      test: ["CMD", "curl", "-s", "-u", "admin:admin", "http://localhost:9000/api/system"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+    ports:
+      - "9000:9000"
+      - "12201:12201/udp"
+    volumes:
+      - graylog_journal:/usr/share/graylog/data/journal
+
+  graylog-bootstrap:
+    build: ./services/bootstrap
+    depends_on:
+      graylog:
+        condition: service_healthy
+    environment:
+      - GRAYLOG_API=http://graylog:9000/api
+      - GRAYLOG_USER=admin
+      - GRAYLOG_PASS=admin
+      - INDEX_NAME=demo-5gb
+      - INDEX_MAX_MB=250
+      - INDEX_MAX_COUNT=20
+      - INPUT_TITLE=gelf-udp-12201
+    restart: "no"
+
+  analyzer1:
+    build:
+      context: ./services/analyzer
+      args:
+        ANALYZER_NAME: analyzer1
+    environment:
+      - ANALYZER_NAME=analyzer1
+      - MONGO_URI=mongodb://mongo:27017/
+      - GRAYLOG_HOST=graylog
+      - GRAYLOG_PORT=12201
+    depends_on:
+      - mongo
+      - graylog
+    ports:
+      - "50051:50051"
+
+  analyzer2:
+    build:
+      context: ./services/analyzer
+      args:
+        ANALYZER_NAME: analyzer2
+    environment:
+      - ANALYZER_NAME=analyzer2
+      - MONGO_URI=mongodb://mongo:27017/
+      - GRAYLOG_HOST=graylog
+      - GRAYLOG_PORT=12201
+    depends_on:
+      - mongo
+      - graylog
+    ports:
+      - "50052:50051"
+
+  analyzer3:
+    build:
+      context: ./services/analyzer
+      args:
+        ANALYZER_NAME: analyzer3
+    environment:
+      - ANALYZER_NAME=analyzer3
+      - MONGO_URI=mongodb://mongo:27017/
+      - GRAYLOG_HOST=graylog
+      - GRAYLOG_PORT=12201
+    depends_on:
+      - mongo
+      - graylog
+    ports:
+      - "50053:50051"
+
+  analyzer4:
+    build:
+      context: ./services/analyzer
+      args:
+        ANALYZER_NAME: analyzer4
+    environment:
+      - ANALYZER_NAME=analyzer4
+      - MONGO_URI=mongodb://mongo:27017/
+      - GRAYLOG_HOST=graylog
+      - GRAYLOG_PORT=12201
+    depends_on:
+      - mongo
+      - graylog
+    ports:
+      - "50054:50051"
+
+  distributor:
+    build: ./services/distributor
+    depends_on:
+      - analyzer1
+      - analyzer2
+      - analyzer3
+      - analyzer4
+      - mongo
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/
+      - ANALYZERS=analyzer1:50051,analyzer2:50051,analyzer3:50051,analyzer4:50051
+      - DEFAULT_WEIGHTS=analyzer1:0.4,analyzer2:0.3,analyzer3:0.2,analyzer4:0.1
+      - ANALYZER_TIMEOUT_MS=200
+      - WEIGHT_POLL_SECS=5
+    ports:
+      - "8000:8000"
+
+  simulator:
+    build: ./services/simulator
+    depends_on:
+      - distributor
+    environment:
+      - TARGET=http://distributor:8000/ingest
+      - PACKET_MIN=5
+      - PACKET_MAX=20
+      - WORKERS=2
+      - QPS_PER_WORKER=100
+    restart: unless-stopped
+
+  webapp:
+    build: ./services/webapp
+    depends_on:
+      - mongo
+      - graylog
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/
+      - GRAYLOG_API=http://graylog:9000/api
+      - GRAYLOG_USER=admin
+      - GRAYLOG_PASS=admin
+      - WINDOW_SECS=3
+      - DEFAULT_WEIGHTS=analyzer1:0.4,analyzer2:0.3,analyzer3:0.2,analyzer4:0.1
+    ports:
+      - "8080:8080"
+
+volumes:
+  mongo_data:
+  opensearch_data: {}
+  graylog_journal: {}
