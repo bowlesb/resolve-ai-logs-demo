@@ -19,7 +19,7 @@ Key capabilities
 import os, asyncio, random
 import logging, sys
 from typing import List, Dict, Tuple
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 import grpc
 from grpc.aio import AioRpcError
@@ -167,6 +167,11 @@ def health():
         "breakers": breakers,
     }
 
+@app.get("/metrics")
+def metrics():
+    """Surface Metrics so they can later be displayed in Grafana."""
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
 
 @app.post("/ingest")
 async def ingest(packet: LogPacket):
@@ -181,11 +186,6 @@ async def ingest(packet: LogPacket):
         raise HTTPException(
             status_code=503, detail="analyzer_hosts not yet initialized?"
         )
-
-    import random, json
-    if random.random() < 0.05:
-        msg = json.dumps([(c, ctx.circuit_breakers[c].state) for c in candidates])
-        logger.info(f"Simulated circuit breaker states: {msg}")
 
     tried = set()
     while len(tried) < len(candidates):
