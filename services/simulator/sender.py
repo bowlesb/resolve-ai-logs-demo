@@ -9,11 +9,11 @@ What it does
 ------------
 - Spawns WORKERS processes (daemon=True).
 - Each worker:
-  * Builds a packet of K messages (K ~ U[PACKET_MIN, PACKET_MAX]).
+  * Builds a packet of K messages
   * Each message has: timestamp (local, '%Y-%m-%dT%H:%M:%S'), level='INFO',
     message=random ASCII text, attrs={} (empty dict).
   * POSTs JSON to TARGET with shape:
-      {"source_id": "sim-<i>", "messages": [ ... ]}
+      {"source_id": "...", "messages": [ ... ]}
   * Sleeps to maintain QPS_PER_WORKER requests/sec.
 
 Environment variables

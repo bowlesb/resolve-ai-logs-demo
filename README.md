@@ -1,63 +1,62 @@
-# Log Distribution & Monitoring System
+# 1. Log Distribution & Monitoring System
 
-A complete **multi-container** setup for simulating log traffic, distributing it across multiple analyzers by weight, and monitoring outcomes in a dashboard backed by **Graylog + OpenSearch**.
+A **multi-container** demo for generating log traffic and distributing it across analyzer containers by relative weight, with monitoring in a **Graylog + OpenSearch** stack.  The included Web UI allows the ability to observe the distibution of logs by analyzer name in real-time, and analyzer failures can be simulated directly in the dashboard. Circuit breakers are used to avoid sending traffic to unhealthy analyzers, and the dashboard allows observing the state of each analyzers circuit breaker. 
 
-- **Simulator** generates HTTP log traffic.
-- **Distributor (FastAPI + gRPC clients)** routes packets to analyzers using live **weights** and per-analyzer **circuit breakers**.
-- **Analyzers (gRPC servers)** forward processed logs to **Graylog** via GELF.
-- **Dashboard (Plotly/Dash)** visualizes live distribution, exposes controls for weights and analyzer ON/OFF, and shows breaker state.
-- **MongoDB** stores weights and analyzer state (and is polled by distributor + updated by dashboard).
-- **Bootstrap** prepares Graylog (inputs, index rotation/retention).
-
----
-
-## 1) Overview
-
-This project demonstrates a **resilient, weighted fan-out** for log processing. Analyzer failures can be simulated from the dashboard; the **circuit breaker** in the distributor adapts by skipping unhealthy analyzers until they recover. The dashboard ensures the observed analyzer distribution in Graylog matches configured weights.
+- **Simulator**: generates HTTP log traffic.
+- **Distributor (FastAPI + gRPC clients)**: routes packets to gRPC analyzers
+- **Analyzers (gRPC servers)**: forward logs to **Graylog** via GELF.
+- **Dashboard (Plotly/Dash)**: allows real-time observation of log distributions and simulated analyzer failures
+- **Grafana (Prometheus)**: Analyzer request successes/min & failures/min during simulated analyzer failure, to observe circuit breaker benefit.
+- **MongoDB**: Stores weights and Analyzer On / Off states.
+- **Bootstrap**: configures Graylog inputs and index rotation/retention.
 
 ---
 
-## 2) Architecture
+## 2) Overall Arch Diagram
 
 ![Diagram](arch-diagram.png)
 
-## 3) Components
+## 3) Components in Detail
 
 ### 3.1 Graylog Bootstrap, OpenSearch & Graylog
-- Bootstrap waits for the Graylog API to be ready and ensures:
-  - **GELF UDP input** exists on port `12201`.
+- Bootstrap script aaits for Graylog API, ensures:
+  - **GELF UDP** input on `12201`.
   - **Default index set** with:
-    - Size-based rotation (env: `INDEX_MAX_MB`).
-    - Retention by count (env: `INDEX_MAX_COUNT`).
-- Graylog UI: **http://localhost:9000**
-  - Default creds (demo only): `admin` / `admin`
-- OpenSearch backs Graylog search & storage.
+    - Size-based rotation (`INDEX_MAX_MB`).
+    - Retention by count (`INDEX_MAX_COUNT`).
+- Graylog UI: `http://localhost:9000` (demo creds: `admin`/`admin`).
+- OpenSearch backs search/storage.
 
 ### 3.2 Distributor Service (FastAPI + grpc.aio)
-- Accepts **POST `/ingest`** packets from the simulator (or any agent).
-- Routes to analyzers using:
-  - **Weights** (live-updated from MongoDB).
-  - Analyzer **ON/OFF** state (simulate failures).
-  - **Circuit breakers** (CLOSED / OPEN / HALF_OPEN).
-- **GET `/health`** exposes current weights, analyzers, and breaker snapshots.
+- Endpoints
+  - **POST `/ingest`** accepts packets
+  - **GET `/health`**: current weights, analyzers, circuit breaker snapshots.
+  - **GET `/metrics`**: prometheus scapes metrics for Grafana dash.
+- **Circuit breakers** enable unhealthy analyzers to be skipped
+- Uses one worker only (makes circuit breaker behavior easy to observe).
 
 ### 3.3 gRPC Analyzer Containers
-- Receive packets, add trivial processing, and emit to **Graylog** via **GELF UDP**.
-- Analyzer name is included as a **prefix/tag** so distribution by analyzer is searchable.
+- Receive packets, do trivial processing, emit to **Graylog** over **GELF UDP**.
+- Include analyzer name as a searchable **prefix**.
 
-### 3.4 Dashboard (Plotly/Dash)
-- **Bar chart** of logs per analyzer (queried from Graylog).
-- **Circuit breaker table**: live state, failure counts, cooldowns.
-- **Controls**:
-  - Toggle analyzers **ON/OFF**.
-  - Adjust **weights**, save to MongoDB.
-- Auto-refresh during load.
+### 3.4 Web UI (Plotly/Dash)
+- **Bar chart**: real-time log counts per analyzer in last X seconds (queried via Graylog API).
+- **Circuit Breaker real-time state**: observe current analyser status (`closed`, `open`, `half-open`), real-time consective failure counts, and recovery time in `open` state.
+- **Manual Controls**: 
+  - Manually change weights and observe distribution changes.
+  - Simulate analyzer failures via On / Off toggle
+  - Observe real-time circuit breaker state during simulated failures
 
 ### 3.5 MongoDB
-- Persists **weights** and **analyzer on/off** state.
+- Persists **Weights** and On / Off states.
 
 ### 3.6 Simulator
-- Multi-process async **HTTP traffic generator** posting randomized packets to the distributor at a target QPS.
+- Multi-process async **HTTP generator**, randomized log packets at target QPS.
+
+### 3.7 Prometheus + Grafana
+- Prometheus scrapes `distributor:8000/metrics`.
+- Grafana has one graph designed to confirm value of circuit breakers
+  - Important point - Failures/min remains low, even when most analyzers are unhealthy
 
 ---
 
@@ -69,153 +68,63 @@ This project demonstrates a **resilient, weighted fan-out** for log processing. 
 # 1) Bring everything up
 docker compose up -d --build
 
-# 2) Project Web UI: Examine Changing Log distributios
-open http://localhost:8000
+# 2) Project Web UI
+open http://localhost:8080
 
-# 2) Verify Graylog UI
-open http://localhost:9000   # admin/admin (demo only)
+# 3) Graylog UI
+open http://localhost:9000   # get in with admin/admin
 
+# 4) Distributor health
+open http://localhost:8000/health
+
+# 5) Grafana (successes/min & failures/min)
+open http://localhost:3000   # get in with admin/admin
+# Dashboard: "Distributor Success vs Failure (per min)"
+
+# 6) Circuit breaker unit test
+docker compose build distributor  && docker compose run --rm --no-deps -e PYTHONPATH=/app distributor     pytest -q app/tests/test_simple_circuit_breaker.py
 ```
-
-**Ports (defaults):**
-- Distributor API: `8000`
-- Graylog UI: `9000`
-- Graylog GELF UDP input: `12201/udp`
-- Dashboard: `8000`
 
 ---
 
-## 5) Data & API
+## How Simulated Analyzer Failure Works
+Toggling an analyzer OFF updates Mongo with the OFF state for that analyzer. The distributor’s poller reads the flag and excludes OFF analyzers from candidacy (weight becomes irrelevant). If no eligible candidate remains, the request errors.
 
-### 6.1 Distributor request schema (`POST /ingest`)
+## Circuit Breaker Mechanism
+With enough failures, an analyzer’s breaker **opens**. After a timeout, it **half-opens** and accepts probes. In half-open state, enough successes closes it, while any failure during half-open state triggers immediate re-opening.
 
-```json
-{
-  "source_id": "sim-42",
-  "messages": [
-    {
-      "timestamp": "2025-08-10T18:21:00",
-      "level": "INFO",
-      "message": "random text ...",
-      "attrs": {"host": "web-1"}
-    }
-  ]
-}
-```
+## What the Distributor “knows”
+- The Distributor reads the **Weights** from Mongo, which it uses to distribute logs accordingly.
+- However, it has to **infer** the **ON/OFF** states using circuit breakers however. It has no way of "knowing" simulated analyzer On/Off set in the Web UI. I want to clarify this point because while the On / Off states are also stored in Mongo (similar to the weights) they are not read by the Distributor container, only by the Analyzer containers for the purpose of simulating failures. 
 
-**Response (success):**
-```json
-{ "accepted_by": "analyzer2", "count": 25 }
-```
+## How Distributions Update in Real Time
+The Dash UI polls Graylog every 3s (configurable) for recent logs per analyzer (searchable by analyer name prefix), and updates the bar chart. (For production, we would reduce Graylog polling frequency and avoid a brittle prefix).
 
-**Response (all blocked/failing):**
-```json
-{ "detail": "All analyzers are blocked by circuit breakers." }
-```
+## Observing State Change of Circuit Breakers in Web UI
+On the Web UI, when an analyzer is toggled OFF, the distributor reacts, as the circuit breaker state for that analyzer can be observed to change to "open". When it is toggled back "ON", the state can be observed to change to "half-open", then to "closed".
 
-### 6.2 Distributor health (`GET /health`)
+## Observing theh Benefit of Circuit Breakers via Grafana 
+On the Grafana graph below, all analyzers start in ON state, and we see close to zero analyzer request failures. Towards the right a bit, we can see that failures/min rises slightly when 3/4 analyzers are manually turned OFF in the Web UI. Importantly, the error state is still kept very low as the circuit breakers enable sending all logs to the still healthy analyzer. When the analyzers are turned back ON via Web UI, successes/min goes back to zero again.
 
-```json
-{
-  "ok": true,
-  "analyzers": ["analyzer1", "analyzer2", "analyzer3", "analyzer4"],
-  "weights": {"analyzer1": 0.4, "analyzer2": 0.3, "analyzer3": 0.2, "analyzer4": 0.1},
-  "breakers": {
-    "analyzer1": {
-      "name": "analyzer1",
-      "state": "closed",
-      "consecutive_failures": 0,
-      "half_open_successes": 0,
-      "opened_for_secs": -1,
-      "failure_threshold": 3,
-      "recovery_timeout": 5.0,
-      "half_open_success_threshold": 1
-    }
-  }
-}
-```
+![Diagram](grafana-demo.jpg)
 
-### 6.3 MongoDB documents
-
-**Weights**
-```json
-{
-  "_id": "weights",
-  "values": { "analyzer1": 0.4, "analyzer2": 0.3, "analyzer3": 0.2, "analyzer4": 0.1 }
-}
-```
-
-**Analyzer state (example shape)**
-```json
-{
-  "_id": "analyzers",
-  "values": { "analyzer1": true, "analyzer2": true, "analyzer3": false, "analyzer4": true }
-}
-```
-
-> The dashboard updates these; the distributor polls and uses them along with breaker state.
+## Other Implementation Notes
+- All logs in a log packet go to the **same** analyzer.
+- Weights need not sum to 1; only **relative** values matter.
+- If all current weights `<= 0`, distributor falls back to an **even** distribution.
+- Analyzer names are fixed in multiple places: (`analyzer1`…`analyzer4`).
+- gRPC is overkill for the demo but representative of prod integration.
 
 ---
 
-## 7) Graylog Usage
+## Limitations and Possible Improvements
 
-**UI:** http://localhost:9000 (admin/admin for local demo)
-
-**Quick searches (last 5 minutes):**
-- All logs: `*`
-- By analyzer name prefix (assuming messages start with it):  
-  `"analyzer1" AND timestamp:[now-5m TO now]`
-- Compare analyzers:  
-  `"analyzer1" OR "analyzer2" OR "analyzer3" OR "analyzer4"`
-
-> Tip: Create saved searches/streams for each analyzer and a dashboard that mirrors the Plotly app’s distribution chart.
-
+1. **Graylog Transport (GELF/UDP):** Graylog would be more resilent with **HTTP or TCP/TLS** and with a buffering mechanism.
+2. **Observability depth:** I included only minimal metrics here in Grafana. It would be valuable to create more graphs to track latency in particular.
+3. **Graylog Scalability:** I did not thoroughly explore Graylog / OpenSearch tuning or scalabilty constraints. Its likely it requires some tuning to perform adequately at scale and not be a bottleneck.
+4. **Searching log counts by analyzer:** Using string prefix for searching is brittle. It would be better to use **structured GELF fields** (`analyzer:name`, etc.) for robust queries/aggregations.
+5. **Unit Test Coverage:** As always, more test coverage would be better. The circuit breaker code was most in need of a test and that was included.
 ---
-
-## 8) Development
-
-**Run distributor locally:**
-```bash
-uvicorn distributor.app:app --host 0.0.0.0 --port 8000 --reload
-```
-
-**Run simulator locally:**
-```bash
-TARGET=http://localhost:8000/ingest WORKERS=4 QPS_PER_WORKER=25 python sim.py
-```
-
-**Analyzer list (env):**
-```
-ANALYZERS="analyzer1:50051,analyzer2:50051,analyzer3:50051,analyzer4:50051"
-```
-
-**Notes**
-- Weight values don’t need to sum to 1; only relative magnitudes matter.
-- When all current weights are `<= 0`, distributor falls back to **even** distribution.
-- Circuit breaker transitions are logged; use `/health` for current snapshot.
-
----
-
-## 9) Assumptions
-
-- Analyzer names are fixed in code (`analyzer1` … `analyzer4`).
-- Graylog REST API is reachable from dashboard + bootstrap.
-- MongoDB is reachable by dashboard & distributor.
-- Services share a network (Docker Compose / K8s).
-- Circuit breaker state is available at `/health`.
-
----
-
-
-## 12) Roadmap / Future Work
-
-1. **Dynamic Analyzer Discovery** — Pull from MongoDB or distributor rather than hardcoding.
-2. **Auth & RBAC** — Protect dashboard/API with OAuth/OIDC; TLS everywhere.
-3. **Resilience** — Smarter retries/backoff for Graylog/Mongo outages.
-4. **Historical Metrics** — Persist counts for trend & anomaly detection.
-5. **Scalability** — Horizontal distributor + sharded Mongo.
-6. **Observability** — Prometheus/Grafana metrics for distributor, analyzers, simulator.
-7. **Config UX** — Validation, presets, and “lock” modes in dashboard.
 
 
 

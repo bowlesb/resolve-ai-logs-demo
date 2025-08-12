@@ -26,7 +26,7 @@ from app.helpers import (
     fetch_breakers,
     render_breaker_table,
     analyzer_state_control,
-    DISTRIBUTOR_API
+    DISTRIBUTOR_API,
 )
 
 APP = Dash(__name__)
@@ -100,7 +100,7 @@ def serve_layout():
         },
         children=[
             html.H2(
-                f"Data Ingestion Distribution (last {WINDOW_SECS // 60} min)",
+                f"Data Ingestion Distribution (last {WINDOW_SECS} sec)",
                 style={"textAlign": "center"},
             ),
             html.Div(
@@ -132,7 +132,7 @@ def serve_layout():
                             "borderRadius": "8px",
                         },
                         children=[
-                            html.H4("Analyzers (toggle ON/OFF)"),
+                            html.H4("Simulate Analyzer Failures (toggle ON/OFF)"),
                             html.Div(
                                 id="analyzers-controls", children=analyzer_controls
                             ),
@@ -141,7 +141,7 @@ def serve_layout():
                                 style={"marginTop": "6px", "color": "#aaa"},
                             ),
                             html.Hr(),
-                            html.H4("Weights"),
+                            html.H4("Set Weights and Observe Distribution"),
                             html.Div(id="weights-div", children=weights_controls),
                             html.Button("Save Weights", id="save-btn", n_clicks=0),
                             html.Div(
@@ -178,7 +178,7 @@ def update_chart(n_intervals: int):
     )
     figure.update_layout(
         template="plotly_dark",
-        yaxis_title=f"events in last {WINDOW_SECS // 60}m",
+        yaxis_title=f"events in last {WINDOW_SECS }s",
         xaxis_title="analyzer",
         margin=dict(l=40, r=20, t=40, b=40),
         height=420,
@@ -192,9 +192,7 @@ def update_breakers(n_intervals: int):
     Refresh the circuit-breaker panel from distributor /health and render a centered table.
     Adds back the original detailed help text for interpreting breaker state.
     """
-    breaker_status_map = fetch_breakers(
-        
-    )
+    breaker_status_map = fetch_breakers()
     header_block = html.Div(
         [
             html.Div(
@@ -210,7 +208,7 @@ def update_breakers(n_intervals: int):
                     html.Br(),
                     "• Reopen In = seconds until the next half-open probe is allowed (0 if already eligible).",
                     html.Br(),
-                    "The state isnt persisted, so well hit a random worker each time. Ok for debugging..",
+                    "State is based on a single Gunicorn worker.",
                 ],
                 style={"color": "#aaa", "fontSize": "12px", "marginBottom": "8px"},
             ),

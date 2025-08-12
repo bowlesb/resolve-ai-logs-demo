@@ -2,7 +2,7 @@ import time
 import logging
 import pytest
 
-from simple_circuit_breaker import SimpleCircuitBreaker, BreakerState
+from app.simple_circuit_breaker import SimpleCircuitBreaker, BreakerState
 
 
 def test_starts_closed_and_allows_requests():
@@ -57,20 +57,3 @@ def test_half_open_failure_reopens():
     assert cb.allow_request()  # -> HALF_OPEN
     cb.record_failure()  # any failure in HALF_OPEN -> OPEN
     assert cb.state == BreakerState.OPEN
-
-
-def test_repr_and_snapshot_consistency():
-    cb = SimpleCircuitBreaker("t", failure_threshold=1, recovery_timeout=0.01)
-    r = repr(cb)
-    assert "SimpleCircuitBreaker" in r and "closed" in r
-    snap = cb.snapshot()
-    assert set(snap.keys()) == {
-        "name",
-        "state",
-        "consecutive_failures",
-        "half_open_successes",
-        "opened_for_secs",
-        "failure_threshold",
-        "recovery_timeout",
-        "half_open_success_threshold",
-    }

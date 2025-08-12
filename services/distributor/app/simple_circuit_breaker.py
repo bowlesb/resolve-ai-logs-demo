@@ -1,7 +1,7 @@
 """
 SimpleCircuitBreaker
 
-A tiny, thread-safe circuit breaker for guarding calls to flaky downstream
+A tiny, thread-safe circuit breaker for guarding calls to downstream
 services. It tracks consecutive failures and moves between three states:
 
 States
@@ -16,7 +16,7 @@ States
 Design notes
 -----------
 - Thread-safety: A per-instance Lock protects all state transitions and counters.
-- Time source: time.monotonic() is used for cooldown timing (immune to wallclock jumps).
+- Time source: time.monotonic() is used for cooldown timing.
 - Logging:
     * On every recorded failure, an INFO log "circuit_fail" includes a snapshot.
     * When the breaker trips OPEN, an INFO log "circuit_trip" is emitted.

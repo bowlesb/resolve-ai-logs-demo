@@ -43,9 +43,10 @@ from .constants import (
 )
 
 
-SUCCESS = Counter("distributor_analyzer_success_total", "Total successful analyzer calls")
+SUCCESS = Counter(
+    "distributor_analyzer_success_total", "Total successful analyzer calls"
+)
 FAILURE = Counter("distributor_analyzer_failure_total", "Total failed analyzer calls")
-
 
 
 logging.basicConfig(
@@ -77,38 +78,6 @@ class LogPacket(BaseModel):
     messages: List[LogMessage]
 
 
-def init_analyzer_ports() -> None:
-    """Initialize analyzer_hosts: the host / ports for each analyzer."""
-    ctx = app.state.ctx
-    for entry in ANALYZERS_ENV.split(","):
-        entry = entry.strip()
-        if not entry:
-            continue
-        assert ":" in entry, f"Invalid entry, : not present in {entry}"
-        host, port = entry.split(":", 1)
-        ctx.analyzer_hosts[host] = (host, int(port))
-
-
-def init_circuit_breakers() -> None:
-    """Assign each analyzer a circuit breaker."""
-    ctx = app.state.ctx
-    for name in ctx.analyzer_hosts.keys():
-        ctx.circuit_breakers[name] = SimpleCircuitBreaker(
-            name,
-            failure_threshold=CB_FAILURE_THRESHOLD,
-            recovery_timeout=CB_RECOVERY_TIMEOUT_SEC,
-            half_open_success_threshold=CB_HALF_OPEN_SUCC_THRESHOLD,
-        )
-
-
-async def init_grpc() -> None:
-    ctx = app.state.ctx
-    for name, (host, port) in ctx.analyzer_hosts.items():
-        ch = grpc.aio.insecure_channel(f"{host}:{port}")
-        ctx.channels[name] = ch
-        ctx.stubs[name] = logs_pb2_grpc.AnalyzerStub(ch)
-
-
 async def poll_weights_updates() -> None:
     """Keep weight_map up to date async based on whats set in Web UI."""
     ctx = app.state.ctx
@@ -128,11 +97,37 @@ async def poll_weights_updates() -> None:
 @app.on_event("startup")
 async def startup() -> None:
     ctx = app.state.ctx
-    init_analyzer_ports()
+
+    # init analyzer_hosts from ANALYZERS_ENV
+    for entry in ANALYZERS_ENV.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        assert ":" in entry, f"Invalid entry, : not present in {entry}"
+        host, port = entry.split(":", 1)
+        ctx.analyzer_hosts[host] = (host, int(port))
+
+    # default weights
     ctx.weight_map.update(DEFAULT_ANALYZER_TO_WEIGHTS)
-    init_circuit_breakers()
-    await init_grpc()
+
+    # circuit breakers per analyzer
+    for name in ctx.analyzer_hosts.keys():
+        ctx.circuit_breakers[name] = SimpleCircuitBreaker(
+            name,
+            failure_threshold=CB_FAILURE_THRESHOLD,
+            recovery_timeout=CB_RECOVERY_TIMEOUT_SEC,
+            half_open_success_threshold=CB_HALF_OPEN_SUCC_THRESHOLD,
+        )
+
+    # gRPC channels + stubs
+    for name, (host, port) in ctx.analyzer_hosts.items():
+        ch = grpc.aio.insecure_channel(f"{host}:{port}")
+        ctx.channels[name] = ch
+        ctx.stubs[name] = logs_pb2_grpc.AnalyzerStub(ch)
+
+    # start weights poller
     asyncio.create_task(poll_weights_updates())
+
     logger.info(
         "Distributor started. analyzers=%s weights=%s",
         list(ctx.analyzer_hosts.keys()),
@@ -151,7 +146,6 @@ def weighted_analyzer_choice(candidates: List[str]) -> str:
         )
         current_weights = [1.0] * len(candidates)
 
-    # No need for current_weights to sum to 1
     return random.choices(candidates, weights=current_weights, k=1)[0]
 
 
@@ -166,6 +160,7 @@ def health():
         "weights": ctx.weight_map,
         "breakers": breakers,
     }
+
 
 @app.get("/metrics")
 def metrics():
@@ -211,7 +206,7 @@ async def ingest(packet: LogPacket):
                     for m in packet.messages
                 ],
             )
-            
+
             _ = await stub.Analyze(req, timeout=ANALYZER_TIMEOUT_MS / 1000.0)
             ctx.circuit_breakers[target].record_success()
             SUCCESS.inc()
