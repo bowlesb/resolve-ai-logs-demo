@@ -1,0 +1,190 @@
+{
+  "title": "End-to-end Latency & Throughput",
+  "uid": "resolve-end2end-v2",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Simulator → Distributor (HTTP client)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Simulator → Distributor — req/s (HTTP client)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "req/s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(calls_total{service_name=\"resolve-ai.simulator\",span_kind=\"SPAN_KIND_CLIENT\",http_method=\"POST\"}[$__rate_interval]))",
+          "legendFormat": "Simulator"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Simulator → Distributor — p50/p90/p95 (ms, HTTP client)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": { "unit": "none", "custom": { "axisLabel": "ms" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "P50",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(latency_milliseconds_bucket{service_name=\"resolve-ai.simulator\",span_kind=\"SPAN_KIND_CLIENT\",http_method=\"POST\"}[$__rate_interval])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "P90",
+          "expr": "histogram_quantile(0.90, sum by (le) (rate(latency_milliseconds_bucket{service_name=\"resolve-ai.simulator\",span_kind=\"SPAN_KIND_CLIENT\",http_method=\"POST\"}[$__rate_interval])))",
+          "legendFormat": "p90"
+        },
+        {
+          "refId": "P95",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(latency_milliseconds_bucket{service_name=\"resolve-ai.simulator\",span_kind=\"SPAN_KIND_CLIENT\",http_method=\"POST\"}[$__rate_interval])))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Distributor (server HTTP) and (client gRPC)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Distributor /ingest — req/s (server)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "req/s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(calls_total{service_name=\"resolve-ai.distributor\",span_kind=\"SPAN_KIND_SERVER\",http_method=\"POST\",http_route=\"/ingest\"}[$__rate_interval]))",
+          "legendFormat": "Distributor /ingest"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Distributor /ingest — p50/p90/p95 (ms, server)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "fieldConfig": {
+        "defaults": { "unit": "none", "custom": { "axisLabel": "ms" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "P50",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(latency_milliseconds_bucket{service_name=\"resolve-ai.distributor\",span_kind=\"SPAN_KIND_SERVER\",http_method=\"POST\",http_route=\"/ingest\"}[$__rate_interval])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "P90",
+          "expr": "histogram_quantile(0.90, sum by (le) (rate(latency_milliseconds_bucket{service_name=\"resolve-ai.distributor\",span_kind=\"SPAN_KIND_SERVER\",http_method=\"POST\",http_route=\"/ingest\"}[$__rate_interval])))",
+          "legendFormat": "p90"
+        },
+        {
+          "refId": "P95",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(latency_milliseconds_bucket{service_name=\"resolve-ai.distributor\",span_kind=\"SPAN_KIND_SERVER\",http_method=\"POST\",http_route=\"/ingest\"}[$__rate_interval])))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Distributor → Analyzer (gRPC client) — req/s",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "fieldConfig": { "defaults": { "unit": "req/s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(calls_total{service_name=\"resolve-ai.distributor\",span_kind=\"SPAN_KIND_CLIENT\",rpc_system=\"grpc\",rpc_method=\"Analyze\"}[$__rate_interval]))",
+          "legendFormat": "Distributor → Analyzer (client)"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Distributor → Analyzer (gRPC client) — p50/p90/p95 (ms)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "fieldConfig": {
+        "defaults": { "unit": "none", "custom": { "axisLabel": "ms" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "P50",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(latency_milliseconds_bucket{service_name=\"resolve-ai.distributor\",span_kind=\"SPAN_KIND_CLIENT\",rpc_system=\"grpc\",rpc_method=\"Analyze\"}[$__rate_interval])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "P90",
+          "expr": "histogram_quantile(0.90, sum by (le) (rate(latency_milliseconds_bucket{service_name=\"resolve-ai.distributor\",span_kind=\"SPAN_KIND_CLIENT\",rpc_system=\"grpc\",rpc_method=\"Analyze\"}[$__rate_interval])))",
+          "legendFormat": "p90"
+        },
+        {
+          "refId": "P95",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(latency_milliseconds_bucket{service_name=\"resolve-ai.distributor\",span_kind=\"SPAN_KIND_CLIENT\",rpc_system=\"grpc\",rpc_method=\"Analyze\"}[$__rate_interval])))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Analyzers (gRPC server)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Per-analyzer — req/s (gRPC server)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
+      "fieldConfig": { "defaults": { "unit": "req/s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (an)(label_replace(rate(calls_total{span_kind=\"SPAN_KIND_SERVER\",rpc_system=\"grpc\",rpc_method=\"Analyze\",service_name=~\"resolve-ai\\\\.analyzer.*\"}[$__rate_interval]), \"an\", \"$1\", \"service_name\", \"resolve-ai\\\\.analyzer(\\\\d+)\") )",
+          "legendFormat": "Analyzer {{an}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Per-analyzer — p50/p90/p95 (ms, gRPC server)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
+      "fieldConfig": {
+        "defaults": { "unit": "none", "custom": { "axisLabel": "ms" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "P50",
+          "expr": "histogram_quantile(0.50, sum by (an, le)(label_replace(rate(latency_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\",rpc_system=\"grpc\",rpc_method=\"Analyze\",service_name=~\"resolve-ai\\\\.analyzer.*\"}[$__rate_interval]), \"an\", \"$1\", \"service_name\", \"resolve-ai\\\\.analyzer(\\\\d+)\") ))",
+          "legendFormat": "Analyzer {{an}} — p50"
+        },
+        {
+          "refId": "P90",
+          "expr": "histogram_quantile(0.90, sum by (an, le)(label_replace(rate(latency_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\",rpc_system=\"grpc\",rpc_method=\"Analyze\",service_name=~\"resolve-ai\\\\.analyzer.*\"}[$__rate_interval]), \"an\", \"$1\", \"service_name\", \"resolve-ai\\\\.analyzer(\\\\d+)\") ))",
+          "legendFormat": "Analyzer {{an}} — p90"
+        },
+        {
+          "refId": "P95",
+          "expr": "histogram_quantile(0.95, sum by (an, le)(label_replace(rate(latency_milliseconds_bucket{span_kind=\"SPAN_KIND_SERVER\",rpc_system=\"grpc\",rpc_method=\"Analyze\",service_name=~\"resolve-ai\\\\.analyzer.*\"}[$__rate_interval]), \"an\", \"$1\", \"service_name\", \"resolve-ai\\\\.analyzer(\\\\d+)\") ))",
+          "legendFormat": "Analyzer {{an}} — p95"
+        }
+      ]
+    }
+  ]
+}
