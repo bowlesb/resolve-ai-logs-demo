@@ -1,208 +1,200 @@
 version: "3.9"
 
+x-otel-common: &otel-common
+  OTEL_SERVICE_NAME: resolve-ai.distributor
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_TRACES_SAMPLER: parentbased_always_on
+  OTEL_LOG_LEVEL: debug          # leave on until you see spans flowing
+  OTEL_RESOURCE_ATTRIBUTES: project=resolve.ai,env=dev
+
+
 services:
   mongo:
     image: mongo:6
     restart: unless-stopped
-    volumes:
-      - mongo_data:/data/db
+    volumes: [ "mongo_data:/data/db" ]
 
   opensearch:
     image: opensearchproject/opensearch:2.11.1
     restart: unless-stopped
     environment:
-      - discovery.type=single-node
-      - plugins.security.disabled=true
-      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
+      discovery.type: single-node
+      plugins.security.disabled: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    ulimits: { memlock: { soft: -1, hard: -1 } }
     healthcheck:
       test: ["CMD-SHELL", "curl -s http://localhost:9200 >/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 30
-    ports:
-      - "9200:9200"
-    volumes:
-      - opensearch_data:/usr/share/opensearch/data
+    ports: [ "9200:9200" ]
+    volumes: [ "opensearch_data:/usr/share/opensearch/data" ]
 
   graylog:
     image: graylog/graylog:5.2
-    depends_on:
-      - mongo
-      - opensearch
+    depends_on: [ mongo, opensearch ]
     restart: unless-stopped
     environment:
-      - GRAYLOG_PASSWORD_SECRET=please-change-me-to-a-long-random-string
-      - GRAYLOG_ROOT_PASSWORD_SHA2=8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918
-      - GRAYLOG_HTTP_EXTERNAL_URI=http://localhost:9000/
-      - GRAYLOG_ELASTICSEARCH_HOSTS=http://opensearch:9200
-      - GRAYLOG_ROOT_TIMEZONE=UTC
-      - GRAYLOG_SERVER_JAVA_OPTS=-Xms256m -Xmx512m
-    entrypoint: /usr/bin/tini -- wait-for-it opensearch:9200 --  /docker-entrypoint.sh
+      GRAYLOG_PASSWORD_SECRET: please-change-me-to-a-long-random-string
+      GRAYLOG_ROOT_PASSWORD_SHA2: 8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918
+      GRAYLOG_HTTP_EXTERNAL_URI: http://localhost:9000/
+      GRAYLOG_ELASTICSEARCH_HOSTS: http://opensearch:9200
+      GRAYLOG_ROOT_TIMEZONE: UTC
+      GRAYLOG_SERVER_JAVA_OPTS: -Xms256m -Xmx512m
+    entrypoint: /usr/bin/tini -- wait-for-it opensearch:9200 -- /docker-entrypoint.sh
     healthcheck:
       test: ["CMD", "curl", "-s", "-u", "admin:admin", "http://localhost:9000/api/system"]
       interval: 10s
       timeout: 5s
       retries: 60
-    ports:
-      - "9000:9000"
-      - "12201:12201/udp"
-    volumes:
-      - graylog_journal:/usr/share/graylog/data/journal
+    ports: [ "9000:9000", "12201:12201/udp" ]
+    volumes: [ "graylog_journal:/usr/share/graylog/data/journal" ]
 
   graylog-bootstrap:
     build: ./services/bootstrap
     depends_on:
-      graylog:
-        condition: service_healthy
+      graylog: { condition: service_healthy }
     environment:
-      - GRAYLOG_API=http://graylog:9000/api
-      - GRAYLOG_USER=admin
-      - GRAYLOG_PASS=admin
-      - INDEX_NAME=demo-5gb
-      - INDEX_MAX_MB=250
-      - INDEX_MAX_COUNT=20
-      - INPUT_TITLE=gelf-udp-12201
+      GRAYLOG_API: http://graylog:9000/api
+      GRAYLOG_USER: admin
+      GRAYLOG_PASS: admin
+      INDEX_NAME: demo-5gb
+      INDEX_MAX_MB: "250"
+      INDEX_MAX_COUNT: "20"
+      INPUT_TITLE: gelf-udp-12201
     restart: "no"
 
   analyzer1:
-    build:
-      context: ./services/analyzer
-      args:
-        ANALYZER_NAME: analyzer1
+    build: { context: ./services/analyzer, args: { ANALYZER_NAME: analyzer1 } }
     environment:
-      - ANALYZER_NAME=analyzer1
-      - MONGO_URI=mongodb://mongo:27017/
-      - GRAYLOG_HOST=graylog
-      - GRAYLOG_PORT=12201
-    depends_on:
-      - mongo
-      - graylog
-    ports:
-      - "50051:50051"
+      <<: *otel-common
+      OTEL_SERVICE_NAME: resolve-ai.analyzer1
+      ANALYZER_NAME: analyzer1
+      MONGO_URI: mongodb://mongo:27017/
+      GRAYLOG_HOST: graylog
+      GRAYLOG_PORT: "12201"
+    depends_on: [ mongo, graylog ]
+    ports: [ "50051:50051" ]
 
   analyzer2:
-    build:
-      context: ./services/analyzer
-      args:
-        ANALYZER_NAME: analyzer2
+    build: { context: ./services/analyzer, args: { ANALYZER_NAME: analyzer2 } }
     environment:
-      - ANALYZER_NAME=analyzer2
-      - MONGO_URI=mongodb://mongo:27017/
-      - GRAYLOG_HOST=graylog
-      - GRAYLOG_PORT=12201
-    depends_on:
-      - mongo
-      - graylog
-    ports:
-      - "50052:50051"
+      <<: *otel-common
+      OTEL_SERVICE_NAME: resolve-ai.analyzer2
+      ANALYZER_NAME: analyzer2
+      MONGO_URI: mongodb://mongo:27017/
+      GRAYLOG_HOST: graylog
+      GRAYLOG_PORT: "12201"
+    depends_on: [ mongo, graylog ]
+    ports: [ "50052:50051" ]
 
   analyzer3:
-    build:
-      context: ./services/analyzer
-      args:
-        ANALYZER_NAME: analyzer3
+    build: { context: ./services/analyzer, args: { ANALYZER_NAME: analyzer3 } }
     environment:
-      - ANALYZER_NAME=analyzer3
-      - MONGO_URI=mongodb://mongo:27017/
-      - GRAYLOG_HOST=graylog
-      - GRAYLOG_PORT=12201
-    depends_on:
-      - mongo
-      - graylog
-    ports:
-      - "50053:50051"
+      <<: *otel-common
+      OTEL_SERVICE_NAME: resolve-ai.analyzer3
+      ANALYZER_NAME: analyzer3
+      MONGO_URI: mongodb://mongo:27017/
+      GRAYLOG_HOST: graylog
+      GRAYLOG_PORT: "12201"
+    depends_on: [ mongo, graylog ]
+    ports: [ "50053:50051" ]
 
   analyzer4:
-    build:
-      context: ./services/analyzer
-      args:
-        ANALYZER_NAME: analyzer4
+    build: { context: ./services/analyzer, args: { ANALYZER_NAME: analyzer4 } }
     environment:
-      - ANALYZER_NAME=analyzer4
-      - MONGO_URI=mongodb://mongo:27017/
-      - GRAYLOG_HOST=graylog
-      - GRAYLOG_PORT=12201
-    depends_on:
-      - mongo
-      - graylog
-    ports:
-      - "50054:50051"
+      <<: *otel-common
+      OTEL_SERVICE_NAME: resolve-ai.analyzer4
+      ANALYZER_NAME: analyzer4
+      MONGO_URI: mongodb://mongo:27017/
+      GRAYLOG_HOST: graylog
+      GRAYLOG_PORT: "12201"
+    depends_on: [ mongo, graylog ]
+    ports: [ "50054:50051" ]
 
   distributor:
     build: ./services/distributor
-    depends_on:
-      - analyzer1
-      - analyzer2
-      - analyzer3
-      - analyzer4
-      - mongo
+    depends_on: [ analyzer1, analyzer2, analyzer3, analyzer4, mongo ]
     environment:
-      - MONGO_URI=mongodb://mongo:27017/
-      - ANALYZERS=analyzer1:50051,analyzer2:50051,analyzer3:50051,analyzer4:50051
-      - DEFAULT_WEIGHTS=analyzer1:0.4,analyzer2:0.3,analyzer3:0.2,analyzer4:0.1
-      - ANALYZER_TIMEOUT_MS=200
-      - WEIGHT_POLL_SECS=5
-    ports:
-      - "8000:8000"
+      <<: *otel-common
+      OTEL_SERVICE_NAME: resolve-ai.distributor
+      MONGO_URI: mongodb://mongo:27017/
+      ANALYZERS: analyzer1:50051,analyzer2:50051,analyzer3:50051,analyzer4:50051
+      DEFAULT_WEIGHTS: analyzer1:0.4,analyzer2:0.3,analyzer3:0.2,analyzer4:0.1
+      ANALYZER_TIMEOUT_MS: "200"
+      WEIGHT_POLL_SECS: "5"
+    ports: [ "8000:8000" ]
 
   simulator:
     build: ./services/simulator
-    depends_on:
-      - distributor
-    environment:
-      - TARGET=http://distributor:8000/ingest
-      - PACKET_MIN=5
-      - PACKET_MAX=20
-      - WORKERS=2
-      - QPS_PER_WORKER=100
+    depends_on: [ distributor ]
     restart: unless-stopped
+    environment:
+      <<: *otel-common
+      OTEL_SERVICE_NAME: resolve-ai.simulator
+      TARGET: http://distributor:8000/ingest
+      PACKET_MIN: "5"
+      PACKET_MAX: "20"
+      WORKERS: "4"
+      QPS_PER_WORKER: "100" # an target QPS for the worker, not exact
 
   webapp:
     build: ./services/webapp
-    depends_on:
-      - mongo
-      - graylog
+    depends_on: [ mongo, graylog ]
     environment:
-      - MONGO_URI=mongodb://mongo:27017/
-      - GRAYLOG_API=http://graylog:9000/api
-      - GRAYLOG_USER=admin
-      - GRAYLOG_PASS=admin
-      - WINDOW_SECS=3
-      - DEFAULT_WEIGHTS=analyzer1:0.4,analyzer2:0.3,analyzer3:0.2,analyzer4:0.1
-    ports:
-      - "8080:8080"
+      MONGO_URI: mongodb://mongo:27017/
+      GRAYLOG_API: http://graylog:9000/api
+      GRAYLOG_USER: admin
+      GRAYLOG_PASS: admin
+      WINDOW_SECS: "3"
+      DEFAULT_WEIGHTS: analyzer1:0.4,analyzer2:0.3,analyzer3:0.2,analyzer4:0.1
+      GRAYLOG_SERVER_JAVA_OPTS: "-Xms1g -Xmx1g"
+
+      GRAYLOG_MESSAGE_JOURNAL_MAX_SIZE: 2gb            # default is 5gb; smaller is safer for small disks
+      GRAYLOG_MESSAGE_JOURNAL_SEGMENT_SIZE: 256mb      # smaller segments -> less painful to skip/repair
+      GRAYLOG_MESSAGE_JOURNAL_MAX_AGE: 12h             # rotate segments by age too
+
+      GRAYLOG_PROCESSBUFFER_PROCESSORS: 4
+      GRAYLOG_OUTPUTBUFFER_PROCESSORS: 2
+      
+    ports: [ "8080:8080" ]
 
   prometheus:
     image: prom/prometheus:latest
-    container_name: prometheus
+    depends_on: [ distributor, otel-collector ]
+    ports: [ "9090:9090" ]
     volumes:
-      - ./services/distributor/infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-    ports:
-      - "9090:9090"
-    depends_on:
-      - distributor
+      - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
   grafana:
     image: grafana/grafana-oss:latest
-    container_name: grafana
+    depends_on: [ prometheus ]
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-    ports:
-      - "3000:3000"
-    depends_on:
-      - prometheus
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    ports: [ "3000:3000" ]
     volumes:
-      - ./services/distributor/infra/grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yml:ro
-      - ./services/distributor/infra/grafana-dashboard.yaml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
-      - ./services/distributor/infra/grafana-dashboard.json:/var/lib/grafana/dashboards/grafana-dashboard.json:ro
+      - ./infra/grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+      - ./infra/grafana-tempo-datasource.yaml:/etc/grafana/provisioning/datasources/tempo.yml:ro
+      - ./infra/grafana-dashboard.yaml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./infra/dashboards:/var/lib/grafana/dashboards:ro
 
-      
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.93.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    depends_on: [ distributor ]
+    ports: [ "4317:4317", "4318:4318" ]
+    volumes:
+      - ./infra/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+
+  tempo:
+    image: grafana/tempo:2.5.0
+    command: ["-config.file=/etc/tempo.yaml"]
+    ports: [ "3200:3200" ]
+    volumes:
+      - ./infra/tempo.yaml:/etc/tempo.yaml:ro
+
 volumes:
   mongo_data:
-  opensearch_data: {}
-  graylog_journal: {}
-
+  opensearch_data:
+  graylog_journal:

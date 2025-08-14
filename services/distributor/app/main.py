@@ -101,8 +101,6 @@ async def startup() -> None:
     # init analyzer_hosts from ANALYZERS_ENV
     for entry in ANALYZERS_ENV.split(","):
         entry = entry.strip()
-        if not entry:
-            continue
         assert ":" in entry, f"Invalid entry, : not present in {entry}"
         host, port = entry.split(":", 1)
         ctx.analyzer_hosts[host] = (host, int(port))

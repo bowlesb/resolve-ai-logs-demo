@@ -1,9 +1,9 @@
 """
 Ingest Traffic Simulator
 
-A small multi-process, async HTTP load generator for the log distributor's
-/ingest endpoint. It spawns N worker processes; each worker runs an asyncio
-loop that posts randomized log packets at a fixed QPS rate.
+A small multi-process HTTP load generator for the log distributor's
+/ingest endpoint. It spawns N worker processes; each worker posts
+randomized log packets at a fixed QPS rate.
 
 What it does
 ------------
@@ -26,8 +26,8 @@ Environment variables
 
 """
 
-
-import os, time, random, string, asyncio
+import multiprocessing
+import os, time, random, string
 import httpx
 from multiprocessing import Process
 import logging
@@ -37,8 +37,9 @@ TARGET = os.environ.get("TARGET", "http://distributor:8000/ingest")
 PACKET_MIN = int(os.environ.get("PACKET_MIN", "5"))
 PACKET_MAX = int(os.environ.get("PACKET_MAX", "20"))
 WORKERS = int(os.environ.get("WORKERS", "4"))
-QPS_PER_WORKER = float(os.environ.get("QPS_PER_WORKER", "25"))
 
+# an target QPS for the worker, not exact
+QPS_PER_WORKER = float(os.environ.get("QPS_PER_WORKER", multiprocessing.cpu_count()))
 
 logging.basicConfig(
     stream=sys.stdout,
@@ -54,8 +55,8 @@ def rand_msg():
     return "".join(random.choices(string.ascii_letters + string.digits + " ", k=n))
 
 
-async def worker_loop(i):
-    client = httpx.AsyncClient(timeout=5.0)
+def worker_loop(i):
+    client = httpx.Client(timeout=5.0)
     interval = 1.0 / QPS_PER_WORKER
     try:
         while True:
@@ -70,18 +71,17 @@ async def worker_loop(i):
                 for _ in range(k)
             ]
             try:
-                await client.post(
-                    TARGET, json={"source_id": f"sim-{i}", "messages": msgs}
-                )
-            except Exception:
-                pass
-            await asyncio.sleep(interval)
+                client.post(TARGET, json={"source_id": f"sim-{i}", "messages": msgs})
+            except Exception as e:
+                logger.warning("Worker %s failed to post: %s", i, e)
+
+            time.sleep(interval)
     finally:
-        await client.aclose()
+        client.close()
 
 
 def worker(i):
-    asyncio.run(worker_loop(i))
+    worker_loop(i)
 
 
 if __name__ == "__main__":

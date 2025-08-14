@@ -1,0 +1,23 @@
+{
+  "title": "Circuit Breaker Eval: Distributor Success vs Failure (per min)",
+  "uid": "breaker-totals",
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Successes / min",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(distributor_analyzer_success_total[1m]))" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Failures / min",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(distributor_analyzer_failure_total[1m]))" }
+      ]
+    }
+  ]
+}

@@ -34,7 +34,7 @@ logger.addHandler(GELFUDPHandler(GRAYLOG_HOST, GRAYLOG_PORT))
 MONGO_CLIENT = MongoClient(MONGO_URI)
 ANALYZERS_COL = MONGO_CLIENT.control.analyzers
 
-active = True  # analyzer is by default "ON", unless it is explicitly turned "OFF" by Mongo state below.
+active = True  # analyzer is by default "ON", unless it is explicitly turned "OFF" by Mongo state below via Web UI.
 
 
 def poll_active():
@@ -54,6 +54,7 @@ class AnalyzerService(logs_pb2_grpc.AnalyzerServicer):
             context.abort(grpc.StatusCode.UNAVAILABLE, f"{ANALYZER_NAME} inactive")
 
         # Trivial processing: just log each message with extra str to Graylog
+        # This part is the bottleneck for the entire system.
         for msg in request.messages:
             logger.info(f"{ANALYZER_NAME}: {msg.message} - I was analyzed!")
 
